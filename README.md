@@ -44,7 +44,7 @@ GeoFS doesn't publish official documentation for its internals, so this script p
 | TAS | `geofs.animation.values.ktas` (falls back to `.tas`) |
 | Altitude | `geofs.animation.values.altitude` |
 | Vertical Speed | `geofs.animation.values.climbrate` (falls back to `.verticalSpeed`) |
-| Ground Speed | Not exposed by GeoFS — calculated in-script from `geofs.aircraft.instance.llaLocation` position deltas |
+| Ground Speed | Not exposed by GeoFS — calculated in-script from `geofs.aircraft.instance.llaLocation` position deltas (can be inaccurate) |
 
 If GeoFS changes these internal property names in a future update, the affected readout will show `--`. Check the browser console for `[Smart HUD]` log lines — the script logs its startup state to make debugging that easy.
 
