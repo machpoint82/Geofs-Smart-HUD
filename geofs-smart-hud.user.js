@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         GeoFS Smart HUD
-// @namespace    https://github.com/eudes0144-commits
+// @namespace    https://github.com/machpoint82
 // @version      2.0.0
 // @description  Professional glass-cockpit style HUD for GeoFS — ground speed, IAS, TAS, altitude, vertical speed, heading, and live flight-plan ETA/TOC/TOD tracking. Toggle with Shift+X.
 // @author       machpoint82
