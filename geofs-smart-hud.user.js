@@ -3,7 +3,7 @@
 // @namespace    https://github.com/machpoint82
 // @version      2.1.0
 // @description  Professional glass-cockpit style HUD for GeoFS — ground speed, IAS, TAS, altitude, vertical speed, heading, and live flight-plan ETA/TOC/TOD tracking. Toggle with Shift+X.
-// @author       you
+// @author       machpoint82
 // @match        https://www.geo-fs.com/*
 // @match        https://*.geo-fs.com/*
 // @grant        GM_setValue
