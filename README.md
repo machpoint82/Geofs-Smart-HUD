@@ -40,6 +40,17 @@ Compatible with GeoFS **v3.9** and **v4.0**.
 
 Because this script includes `@updateURL`/`@downloadURL` pointing at this repo, Tampermonkey will check for and offer newer versions automatically. Note: this check runs on Tampermonkey's own schedule (roughly once a day), not the moment a new version is pushed — to grab an update immediately, open the Tampermonkey Dashboard and click the update icon next to the script, or use **Utilities → Check for userscript updates**.
 
+### Enabling automatic updates in Tampermonkey
+
+Tampermonkey checks scripts with an `@updateURL` on its own schedule (roughly every 6+ hours), but this has to be turned on:
+
+1. Open the Tampermonkey Dashboard.
+2. Go to **Settings** (top tab).
+3. Under **General → Update**, set **Check for userscript updates** to **Automatically** (or the shortest interval offered).
+4. Also make sure **"Ignore installed scripts’ own update policy"** is left unchecked, so this script's `@updateURL` is respected.
+
+With this on, the HUD will update itself in the background — no need to reinstall manually after future releases.
+
 ## Usage
 
 | Action | How |
