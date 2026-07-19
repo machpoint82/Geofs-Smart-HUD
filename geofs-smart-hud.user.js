@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         GeoFS Smart HUD
 // @namespace    https://github.com/machpoint82
-// @version      2.1.0
-// @description  Professional glass-cockpit style HUD for GeoFS — ground speed, IAS, TAS, altitude, vertical speed, heading, and live flight-plan ETA/TOC/TOD tracking. Toggle with Shift+X.
+// @version      2.2.0
+// @description  Professional glass-cockpit style HUD for GeoFS — ground speed, IAS, TAS, altitude, vertical speed, heading, and live flight-plan ETA/TOD tracking. Toggle with Shift+X.
 // @author       machpoint82
 // @match        https://www.geo-fs.com/*
 // @match        https://*.geo-fs.com/*
@@ -38,11 +38,16 @@
   //                                           backing the game's own NAV panel flight plan.
   //                                           Each entry has {ident, type, lat, lon, alt,
   //                                           spd, track, distanceNM, distanceThusfar,
-  //                                           selected, valid}. GeoFS itself inserts real
-  //                                           "T_O_C"/"T_O_D" pseudo-waypoints into this
-  //                                           array (with its own computed position) once
-  //                                           a cruise altitude is set on the route — this
-  //                                           script reads those directly when present.
+  //                                           selected, valid}. GeoFS itself inserts a real
+  //                                           "T_O_D" pseudo-waypoint into this array (with
+  //                                           its own computed position) once a cruise
+  //                                           altitude is set — this script reads that
+  //                                           directly for the Top of Descent readout.
+  //                                           (There's also a "T_O_C" entry, but Top of
+  //                                           Climb was deliberately dropped from this HUD:
+  //                                           with step climbs, "cruise altitude" isn't a
+  //                                           single well-defined number, so any TOC estimate
+  //                                           would be misleading more often than useful.)
   //                                           (Note: geofs.nav has no such property; an
   //                                           earlier version of this script guessed wrong.)
   // ===========================================================================================
@@ -54,7 +59,6 @@
     gsSmoothing: 0.25,
     wpAdvanceRadiusNm: 2,        // switch to next waypoint once within this distance
     todDescentGradientNmPerKft: 3, // classic "3nm per 1000ft" descent rule
-    tocMinClimbFpm: 100,         // minimum climb rate before we consider TOC "in progress"
     storageKeyPos: 'geofs_smarthud_pos_v2',
   };
 
@@ -260,8 +264,6 @@
             <span class="smarthud-value amber" id="v-wpname">--</span></div>
           <div class="smarthud-row"><span class="smarthud-label">Dist / ETA</span>
             <span class="smarthud-value dim" id="v-wpeta">--</span></div>
-          <div class="smarthud-row"><span class="smarthud-label">Top of Climb</span>
-            <span class="smarthud-value dim" id="v-toc">--</span></div>
           <div class="smarthud-row"><span class="smarthud-label">Top of Descent</span>
             <span class="smarthud-value dim" id="v-tod">--</span></div>
           <div class="smarthud-row"><span class="smarthud-label">Destination ETA</span>
@@ -280,7 +282,6 @@
     els.hdg = root.querySelector('#v-hdg');
     els.wpname = root.querySelector('#v-wpname');
     els.wpeta = root.querySelector('#v-wpeta');
-    els.toc = root.querySelector('#v-toc');
     els.tod = root.querySelector('#v-tod');
     els.dest = root.querySelector('#v-dest');
 
@@ -376,7 +377,7 @@
   }
 
   // Distance/ETA to a specific named waypoint (used for both regular next-WP display and
-  // for looking up GeoFS's own computed T_O_C / T_O_D entries directly, when present)
+  // for looking up GeoFS's own computed T_O_D entry directly, when present)
   function distEtaTo(lat, lon, wp, gsKt) {
     if (!wp || typeof wp.lat !== 'number' || typeof wp.lon !== 'number') return null;
     const dist = greatCircleDistanceNm(lat, lon, wp.lat, wp.lon);
@@ -389,7 +390,6 @@
     if (!fp || fp.length === 0) {
       els.wpname.textContent = '--';
       els.wpeta.textContent = 'no flight plan loaded';
-      els.toc.textContent = '--';
       els.tod.textContent = '--';
       els.dest.textContent = '--';
       return;
@@ -403,12 +403,22 @@
     }
     if (activeIndex >= fp.length) activeIndex = fp.length - 1;
 
-    // Auto-advance once close to the active waypoint
-    const active = fp[activeIndex];
-    if (typeof active.lat === 'number' && typeof active.lon === 'number') {
-      const distToActive = greatCircleDistanceNm(lat, lon, active.lat, active.lon);
-      if (distToActive < CONFIG.wpAdvanceRadiusNm && activeIndex < fp.length - 1) {
+    // Auto-advance: keep moving to the next waypoint as long as it's actually closer to
+    // our current position than the one we're currently tracking. This "leapfrogs" us
+    // forward correctly even if the aircraft spawns, teleports, or otherwise jumps past
+    // one or more waypoints entirely — a fixed proximity radius would get permanently
+    // stuck in that case, since straight-line distance to a point behind us may never
+    // shrink again.
+    while (activeIndex < fp.length - 1) {
+      const cur = fp[activeIndex];
+      const next = fp[activeIndex + 1];
+      if (typeof cur.lat !== 'number' || typeof next.lat !== 'number') break;
+      const dCur = greatCircleDistanceNm(lat, lon, cur.lat, cur.lon);
+      const dNext = greatCircleDistanceNm(lat, lon, next.lat, next.lon);
+      if (dNext < dCur) {
         activeIndex++;
+      } else {
+        break;
       }
     }
 
@@ -435,34 +445,8 @@
       els.dest.textContent = '--';
     }
 
-    // ---- TOP OF CLIMB ----
-    // Preferred: GeoFS itself inserts a real "T_O_C" waypoint into the route with its own
-    // computed position once a cruise altitude is set — just read that directly.
-    const tocWp = fp.find((w) => w.ident === 'T_O_C');
-    if (tocWp) {
-      const line = distEtaTo(lat, lon, tocWp, gsKt);
-      els.toc.textContent = line ? line + ' (GeoFS FPL)' : '--';
-    } else {
-      // Fallback: estimate from current climb rate toward the highest planned altitude
-      // in the route, only used if GeoFS hasn't inserted its own T_O_C (e.g. no cruise
-      // altitude set on the route yet).
-      let cruiseAlt = null;
-      for (const w of fp) {
-        const a = parseAltField(w.alt);
-        if (a !== null && (cruiseAlt === null || a > cruiseAlt)) cruiseAlt = a;
-      }
-      if (cruiseAlt !== null && vsFpm !== null && vsFpm > CONFIG.tocMinClimbFpm && altFt < cruiseAlt - 50) {
-        const minutesToToc = (cruiseAlt - altFt) / vsFpm;
-        els.toc.textContent = 'in ' + fmtEta(minutesToToc / 60) + ' (est., to ' + Math.round(cruiseAlt).toLocaleString() + ' ft)';
-      } else if (cruiseAlt !== null && altFt >= cruiseAlt - 50) {
-        els.toc.textContent = 'at cruise';
-      } else {
-        els.toc.textContent = '--';
-      }
-    }
-
     // ---- TOP OF DESCENT ----
-    // Preferred: GeoFS's own computed "T_O_D" waypoint, same idea as T_O_C above.
+    // Preferred: GeoFS's own computed "T_O_D" waypoint, read directly.
     const todWp = fp.find((w) => w.ident === 'T_O_D');
     if (todWp) {
       const line = distEtaTo(lat, lon, todWp, gsKt);
